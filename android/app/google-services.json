@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "863391242292",
+    "firebase_url": "https://nova-studio-24-default-rtdb.firebaseio.com",
+    "project_id": "nova-studio-24",
+    "storage_bucket": "nova-studio-24.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:863391242292:android:5469edfa0fcae9e0d41261",
+        "android_client_info": {
+          "package_name": "com.novastudio24.flashfinds"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYwIxatQO_c0myq-32bgrhvnFiuo4bM8k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
