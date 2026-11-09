@@ -6,6 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../models/product_model.dart';
 import '../search/search_screen.dart';
 import '../product/product_detail_screen.dart';
+import '../auth/login_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -15,30 +16,70 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
+        preferredSize: const Size.fromHeight(65),
         child: AppBar(
           elevation: 0,
           flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppColors.fireGradient)),
-          title: GestureDetector(
-            onTap: () {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen()));
-            },
-            child: Container(
-              height: 42,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(21),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 6)],
+          title: Row(
+            children: [
+              // Search Bar
+              Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen()));
+                  },
+                  child: Container(
+                    height: 40,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 4)],
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(Icons.search, color: AppColors.primary, size: 20),
+                        SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Search viral deals...',
+                            style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              child: const Row(
-                children: [
-                  Icon(Icons.search, color: AppColors.primary, size: 22),
-                  SizedBox(width: 8),
-                  Text('Search viral gadgets, discounts...', style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-                ],
+              const SizedBox(width: 8),
+
+              // Direct Top Login Button (এখন হোম পেজেই লগইন অপশন থাকবে)
+              InkWell(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.white70),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.person, color: Colors.white, size: 18),
+                      SizedBox(width: 4),
+                      Text(
+                        'Login',
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),
@@ -77,7 +118,6 @@ class HomeScreen extends StatelessWidget {
               mainAxisSpacing: 10,
               crossAxisSpacing: 10,
               itemBuilder: (context, index) {
-                // এটি অটোমেটিক ডাইনামিক মডেল (এপিআই আসার আগ পর্যন্ত ডেমো স্ট্রাকচার অনুযায়ী ভিউ হচ্ছে)
                 final mockProduct = ProductModel(
                   id: '$index',
                   title: 'Ultra Fast Wireless Charging Smart Gadget 2026 Edition',
@@ -94,7 +134,7 @@ class HomeScreen extends StatelessWidget {
 
                 return _buildProductCard(context, mockProduct);
               },
-              childCount: 10, // এপিআই অ্যাড হলে আনলিমিটেড হবে
+              childCount: 10,
             ),
           ),
         ],
