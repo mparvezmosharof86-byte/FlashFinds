@@ -10,6 +10,8 @@ class ProfileScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final AuthService authService = AuthService();
+    final User? user = authService.currentUser;
+    final bool isLoggedIn = user != null;
 
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
@@ -18,87 +20,77 @@ class ProfileScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0.5,
       ),
-      body: StreamBuilder<User?>(
-        stream: authService.userStream,
-        builder: (context, snapshot) {
-          final user = snapshot.data;
-          final bool isLoggedIn = user != null;
-
-          return SingleChildScrollView(
-            child: Column(
-              children: [
-                // User Header Card
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  color: Colors.white,
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 32,
-                        backgroundColor: AppColors.primary.withOpacity(0.1),
-                        child: Icon(isLoggedIn ? Icons.account_circle : Icons.person_outline, size: 36, color: AppColors.primary),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              isLoggedIn ? (user.email ?? 'Member') : 'Welcome to FlashFinds',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              isLoggedIn ? 'Syncing active' : 'Sign in to save deals and sync cart',
-                              style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-                            ),
-                          ],
-                        ),
-                      ),
-                      if (!isLoggedIn)
-                        ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                          ),
-                          child: const Text('Login', style: TextStyle(color: Colors.white, fontSize: 12)),
-                        ),
-                    ],
+      body: SingleChildScrollView(
+        child: Column(
+          children: [
+            // Prominent Login / Profile Card
+            Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6)],
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: AppColors.primary.withOpacity(0.1),
+                    child: Icon(isLoggedIn ? Icons.account_circle : Icons.person_outline, size: 36, color: AppColors.primary),
                   ),
-                ),
-                const SizedBox(height: 12),
-
-                // Settings Options
-                _buildOption(Icons.favorite_outline, 'Saved Wishlist Deals', () {}),
-                _buildOption(Icons.notifications_none, 'Notification Settings', () {}),
-                _buildOption(Icons.language, 'Currency: USD (\$)', () {}),
-                _buildOption(Icons.verified_user_outlined, 'Privacy Policy & Terms', () {}),
-                _buildOption(Icons.info_outline, 'About FlashFinds App', () {}),
-
-                if (isLoggedIn) ...[
-                  const SizedBox(height: 12),
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 12),
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => authService.signOut(),
-                      icon: const Icon(Icons.logout, color: Colors.red),
-                      label: const Text('Sign Out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Colors.red),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isLoggedIn ? (user.email ?? 'Member') : 'Welcome to FlashFinds',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          isLoggedIn ? 'Account active' : 'Sign in to access your saved cart',
+                          style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () {
+                      if (isLoggedIn) {
+                        authService.signOut();
+                      } else {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isLoggedIn ? Colors.grey[200] : AppColors.primary,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text(
+                      isLoggedIn ? 'Logout' : 'Sign In',
+                      style: TextStyle(
+                        color: isLoggedIn ? Colors.red : Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
                     ),
                   ),
                 ],
-              ],
+              ),
             ),
-          );
-        },
+
+            // Settings Options
+            _buildOption(Icons.favorite_outline, 'Saved Wishlist Deals', () {}),
+            _buildOption(Icons.notifications_none, 'Notification Settings', () {}),
+            _buildOption(Icons.language, 'Currency: USD (\$)', () {}),
+            _buildOption(Icons.verified_user_outlined, 'Privacy Policy & Terms', () {}),
+            _buildOption(Icons.info_outline, 'About FlashFinds App', () {}),
+          ],
+        ),
       ),
     );
   }
