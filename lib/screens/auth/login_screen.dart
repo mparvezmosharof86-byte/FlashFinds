@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../constants/app_colors.dart';
 import '../../services/auth_service.dart';
+import '../main_navigation_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -10,15 +12,20 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _otpController = TextEditingController();
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
 
-  bool _isPhoneLogin = true;
-  bool _isLogin = true;
+  // Controllers
+  final _phoneController = TextEditingController();
+  final _otpController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+
+  bool _isPhoneMode = true; // Phone vs Email
+  bool _isSignUpMode = false; // Login vs Register (Email এর জন্য)
+  bool _isOtpSent = false;
   bool _isLoading = false;
-  bool _isOtpSent = false; // OTP পাঠানো হয়েছে কিনা
 
   final List<Map<String, String>> _countries = const [
     {'name': 'Saudi Arabia', 'code': '+966', 'flag': '🇸🇦'},
@@ -41,52 +48,35 @@ class _LoginScreenState extends State<LoginScreen> {
     _selectedCountry = _countries[0];
   }
 
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    _otpController.dispose();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
-
-  void _showCountryPicker() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          height: 400,
-          child: Column(
-            children: [
-              const Text('Select Your Country', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const Divider(),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _countries.length,
-                  itemBuilder: (context, index) {
-                    final item = _countries[index];
-                    return ListTile(
-                      leading: Text(item['flag']!, style: const TextStyle(fontSize: 24)),
-                      title: Text(item['name']!),
-                      trailing: Text(item['code']!, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
-                      onTap: () {
-                        setState(() => _selectedCountry = item);
-                        Navigator.pop(context);
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+  void _navigateToHome() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const MainNavigationScreen()),
+      (route) => false,
     );
   }
 
-  void _handlePhoneAuth() async {
+  // ১. গুগল সাইন-ইন এক্সিকিউট করা
+  void _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final cred = await _authService.signInWithGoogle();
+      if (cred != null && mounted) {
+        _navigateToHome();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Google Sign-In: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  // ২. ফোন নম্বর ওটিপি হ্যান্ডলার (Passwordless)
+  void _sendPhoneOtp() async {
     final phone = _phoneController.text.trim();
     if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1)); // স্মুথ লোডিং
+    await Future.delayed(const Duration(seconds: 1));
     setState(() {
       _isLoading = false;
       _isOtpSent = true;
@@ -104,57 +94,73 @@ class _LoginScreenState extends State<LoginScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('OTP sent to ${_selectedCountry['code']}$phone. (Test code: 123456)'),
+        content: Text('Verification code sent to ${_selectedCountry['code']}$phone. (Test: 123456)'),
         backgroundColor: Colors.green,
       ),
     );
   }
 
-  void _verifyOtp() async {
+  void _verifyPhoneOtp() async {
     final otp = _otpController.text.trim();
-    if (otp.length < 4) {
+    if (otp.length < 6) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter valid 6-digit OTP')),
+        const SnackBar(content: Text('Please enter 6-digit verification code')),
       );
       return;
     }
 
     setState(() => _isLoading = true);
     await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
+    final fullPhone = '${_selectedCountry['code']}${_phoneController.text.trim()}';
+    
+    // সেভ ডাটা
+    final currentUid = FirebaseAuth.instance.currentUser?.uid ?? 'guest_${DateTime.now().millisecondsSinceEpoch}';
+    await _authService.savePhoneUser(currentUid, fullPhone);
 
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Login Successful! Welcome to FlashFinds.'), backgroundColor: Colors.green),
-      );
-      Navigator.pop(context);
+      setState(() => _isLoading = false);
+      _navigateToHome();
     }
   }
 
+  // ৩. ইমেইল সাইন-ইন ও সাইন-আপ হ্যান্ডলার
   void _handleEmailAuth() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
+
     if (email.isEmpty || password.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter email and password')),
+        const SnackBar(content: Text('Please fill all required fields')),
       );
       return;
     }
 
     setState(() => _isLoading = true);
-    final AuthService authService = AuthService();
-
     try {
-      if (_isLogin) {
-        await authService.signInWithEmail(email, password);
+      if (_isSignUpMode) {
+        final fName = _firstNameController.text.trim();
+        final lName = _lastNameController.text.trim();
+        if (fName.isEmpty || lName.isEmpty) throw 'Please provide First and Last Name';
+
+        await _authService.signUpWithEmail(
+          email: email,
+          password: password,
+          firstName: fName,
+          lastName: lName,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Verification link sent to your email. Account created!'), backgroundColor: Colors.green),
+          );
+        }
       } else {
-        await authService.signUpWithEmail(email, password);
+        await _authService.signInWithEmail(email, password);
       }
-      if (mounted) Navigator.pop(context);
+      if (mounted) _navigateToHome();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.orange[800]),
+          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -169,20 +175,16 @@ class _LoginScreenState extends State<LoginScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
-          onPressed: () => Navigator.pop(context),
-        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Skip / Guest', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            onPressed: _navigateToHome,
+            child: const Text('Skip / Guest', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold, fontSize: 14)),
           ),
         ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -194,52 +196,70 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 child: const Icon(Icons.bolt, color: Colors.white, size: 36),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               Text(
-                _isOtpSent ? 'Verify Phone' : (_isLogin ? 'Global Login' : 'Create Account'),
+                _isPhoneMode 
+                    ? (_isOtpSent ? 'Verify Phone Code' : 'Mobile Number Login') 
+                    : (_isSignUpMode ? 'Register Account' : 'Welcome Back'),
                 style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: AppColors.textDark),
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 4),
               Text(
-                _isOtpSent
-                    ? 'Enter the 6-digit code sent to ${_selectedCountry['code']}${_phoneController.text}'
-                    : 'Select your country and log in to explore exclusive international deals.',
+                _isPhoneMode
+                    ? 'Enter phone number. No password needed, login via OTP.'
+                    : 'Manage deals, track rewards, and synchronize your cart.',
                 style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
-              if (!_isOtpSent) ...[
-                // Phone / Email Toggle
-                Row(
+              // Tab Switcher (Mobile vs Email)
+              Container(
+                decoration: BoxDecoration(color: const Color(0xFFF2F4F7), borderRadius: BorderRadius.circular(12)),
+                padding: const EdgeInsets.all(4),
+                child: Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => setState(() => _isPhoneLogin = true),
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: _isPhoneLogin ? AppColors.primary.withOpacity(0.08) : Colors.transparent,
-                          side: BorderSide(color: _isPhoneLogin ? AppColors.primary : Colors.grey[300]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: InkWell(
+                        onTap: () => setState(() {
+                          _isPhoneMode = true;
+                          _isOtpSent = false;
+                        }),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _isPhoneMode ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: _isPhoneMode ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text('Mobile OTP', style: TextStyle(fontWeight: FontWeight.bold, color: _isPhoneMode ? AppColors.primary : AppColors.textMuted)),
                         ),
-                        child: Text('Phone Number', style: TextStyle(color: _isPhoneLogin ? AppColors.primary : AppColors.textMuted, fontWeight: FontWeight.bold)),
                       ),
                     ),
-                    const SizedBox(width: 12),
                     Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => setState(() => _isPhoneLogin = false),
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: !_isPhoneLogin ? AppColors.primary.withOpacity(0.08) : Colors.transparent,
-                          side: BorderSide(color: !_isPhoneLogin ? AppColors.primary : Colors.grey[300]!),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      child: InkWell(
+                        onTap: () => setState(() => _isPhoneMode = false),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: !_isPhoneMode ? Colors.white : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: !_isPhoneMode ? [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4)] : null,
+                          ),
+                          alignment: Alignment.center,
+                          child: Text('Email & Password', style: TextStyle(fontWeight: FontWeight.bold, color: !_isPhoneMode ? AppColors.primary : AppColors.textMuted)),
                         ),
-                        child: Text('Email ID', style: TextStyle(color: !_isPhoneLogin ? AppColors.primary : AppColors.textMuted, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
+              ),
+              const SizedBox(height: 20),
 
-                if (_isPhoneLogin) ...[
+              // --- FORM SECTION ---
+              if (_isPhoneMode) ...[
+                if (!_isOtpSent) ...[
+                  // Phone Number Input
                   Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.grey[300]!),
@@ -248,17 +268,32 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Row(
                       children: [
                         InkWell(
-                          onTap: _showCountryPicker,
-                          borderRadius: const BorderRadius.horizontal(left: Radius.circular(12)),
+                          onTap: () {
+                            showModalBottomSheet(
+                              context: context,
+                              builder: (_) => ListView.builder(
+                                itemCount: _countries.length,
+                                itemBuilder: (context, i) => ListTile(
+                                  leading: Text(_countries[i]['flag']!, style: const TextStyle(fontSize: 22)),
+                                  title: Text(_countries[i]['name']!),
+                                  trailing: Text(_countries[i]['code']!, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                                  onTap: () {
+                                    setState(() => _selectedCountry = _countries[i]);
+                                    Navigator.pop(context);
+                                  },
+                                ),
+                              ),
+                            );
+                          },
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
                             color: Colors.grey[100],
                             child: Row(
                               children: [
-                                Text(_selectedCountry['flag']!, style: const TextStyle(fontSize: 20)),
-                                const SizedBox(width: 6),
-                                Text(_selectedCountry['code']!, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                const Icon(Icons.arrow_drop_down, color: AppColors.textMuted, size: 20),
+                                Text(_selectedCountry['flag']!, style: const TextStyle(fontSize: 18)),
+                                const SizedBox(width: 4),
+                                Text(_selectedCountry['code']!, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                const Icon(Icons.arrow_drop_down, color: AppColors.textMuted),
                               ],
                             ),
                           ),
@@ -268,90 +303,159 @@ class _LoginScreenState extends State<LoginScreen> {
                             controller: _phoneController,
                             keyboardType: TextInputType.phone,
                             decoration: const InputDecoration(
-                              hintText: 'Enter Phone Number',
+                              hintText: 'Enter Mobile Number',
                               border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 14),
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12),
                             ),
                           ),
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 18),
+                  _buildPrimaryButton('Send Verification Code', _sendPhoneOtp),
                 ] else ...[
+                  // OTP Box
                   TextField(
-                    controller: _emailController,
-                    keyboardType: TextInputType.emailAddress,
+                    controller: _otpController,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 8),
                     decoration: InputDecoration(
-                      labelText: 'Email Address',
+                      hintText: '------',
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _passwordController,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  _buildPrimaryButton('Verify & Enter App', _verifyPhoneOtp),
+                  Center(
+                    child: TextButton(
+                      onPressed: () => setState(() => _isOtpSent = false),
+                      child: const Text('Change Phone Number', style: TextStyle(color: AppColors.textMuted)),
                     ),
                   ),
                 ],
-
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : (_isPhoneLogin ? _handlePhoneAuth : _handleEmailAuth),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(_isPhoneLogin ? 'Send Verification Code' : (_isLogin ? 'Sign In' : 'Sign Up'),
-                            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ),
               ] else ...[
-                // OTP Input Field
+                // Email Form (Login / Register)
+                if (_isSignUpMode) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _firstNameController,
+                          decoration: InputDecoration(
+                            labelText: 'First Name',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _lastNameController,
+                          decoration: InputDecoration(
+                            labelText: 'Last Name',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 TextField(
-                  controller: _otpController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 8),
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
                   decoration: InputDecoration(
-                    hintText: '------',
+                    labelText: 'Gmail / Email ID',
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _verifyOtp,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: _isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : const Text('Verify & Enter App', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 18),
+                _buildPrimaryButton(_isSignUpMode ? 'Verify & Create Account' : 'Sign In', _handleEmailAuth),
                 Center(
                   child: TextButton(
-                    onPressed: () => setState(() => _isOtpSent = false),
-                    child: const Text('Change Phone Number', style: TextStyle(color: AppColors.textMuted)),
+                    onPressed: () => setState(() => _isSignUpMode = !_isSignUpMode),
+                    child: Text(
+                      _isSignUpMode ? 'Already have an account? Sign In' : "Don't have an account? Register Now",
+                      style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold),
+                    ),
                   ),
                 ),
               ],
+
+              const SizedBox(height: 24),
+              // --- OR SIGN IN WITH GOOGLE ---
+              Row(
+                children: [
+                  Expanded(child: Divider(color: Colors.grey[300])),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('OR CONNECT WITH', style: TextStyle(color: AppColors.textMuted, fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                  Expanded(child: Divider(color: Colors.grey[300])),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Circular Google Sign-In Button
+              Center(
+                child: InkWell(
+                  onTap: _isLoading ? null : _handleGoogleSignIn,
+                  borderRadius: BorderRadius.circular(30),
+                  child: Container(
+                    width: 56,
+                    height: 56,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white,
+                      border: Border.all(color: Colors.grey[300]!),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4)),
+                      ],
+                    ),
+                    child: Image.network(
+                      'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/768px-Google_%22G%22_logo.svg.png',
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Center(
+                child: Text('One-Tap Google Login', style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+              ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryButton(String title, VoidCallback onTap) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+        child: _isLoading
+            ? const CircularProgressIndicator(color: Colors.white)
+            : Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
       ),
     );
   }
