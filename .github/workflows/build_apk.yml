@@ -34,46 +34,60 @@ jobs:
             flutter create --org com.novastudio24 --project-name flashfinds .
           fi
 
-      - name: Fix Android Permissions and Firebase Gradle Integration
+      - name: Inject Real Firebase Keys into Dart
         run: |
-          # 1. Add Internet permissions
+          python3 -c "
+          import json
+          with open('android/app/google-services.json') as f:
+              data = json.load(f)
+          project_id = data['project_info']['project_id']
+          storage_bucket = data['project_info'].get('storage_bucket', f'{project_id}.appspot.com')
+          sender_id = data['project_info']['project_number']
+          client = data['client'][0]
+          api_key = client['api_key'][0]['current_key']
+          app_id = client['client_info']['mobilesdk_app_id']
+
+          code = f'''import \"package:firebase_core/firebase_core.dart\" show FirebaseOptions;
+
+          class DefaultFirebaseOptions {{
+            static const FirebaseOptions currentPlatform = FirebaseOptions(
+              apiKey: \"{api_key}\",
+              appId: \"{app_id}\",
+              messagingSenderId: \"{sender_id}\",
+              projectId: \"{project_id}\",
+              storageBucket: \"{storage_bucket}\",
+            );
+          }}
+          '''
+          with open('lib/firebase_options.dart', 'w') as out:
+              out.write(code)
+          print('Successfully injected real Firebase credentials into Dart!')
+          "
+
+      - name: Setup Fixed Keystore & Extract SHA-1
+        run: |
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml || true
-
-          # 2. Add Google Services Gradle Plugin
-          if [ -f android/settings.gradle ]; then
-            if ! grep -q "com.google.gms.google-services" android/settings.gradle; then
-              sed -i '/plugins {/a \    id "com.google.gms.google-services" version "4.4.1" apply false' android/settings.gradle || true
-            fi
-          fi
-
-          if [ -f android/build.gradle ]; then
-            if ! grep -q "com.google.gms.google-services" android/build.gradle; then
-              sed -i '/dependencies {/a \        classpath "com.google.gms:google-services:4.4.1"' android/build.gradle || true
-            fi
-          fi
-
-          if [ -f android/app/build.gradle ]; then
-            if ! grep -q "com.google.gms.google-services" android/app/build.gradle; then
-              echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle || true
-            fi
-          fi
+          
+          # Print SHA-1 of debug keystore so user can copy it
+          echo "### 🔑 SHA-1 Fingerprint for Google Login:" >> $GITHUB_STEP_SUMMARY
+          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep "SHA1:" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Flutter Packages
         run: flutter pub get
 
-      - name: Build Android Release APK
-        run: flutter build apk --release --no-tree-shake-icons
+      - name: Build Android APK
+        run: flutter build apk --debug
 
       - name: Rename APK for Easy Download
         run: |
-          mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/FlashFinds.apk
+          mv build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/FlashFinds.apk
 
       - name: Publish Direct APK Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "FlashFinds v1.0.${{ github.run_number }} - Direct APK"
-          body: "FlashFinds-এর ফায়ারবেস অথেন্টিকেশন অ্যাক্টিভেটেড এপিকে।"
+          body: "FlashFinds-এর সম্পূর্ণ ফিক্সড এপিকে।"
           files: build/app/outputs/flutter-apk/FlashFinds.apk
           draft: false
           prerelease: false
