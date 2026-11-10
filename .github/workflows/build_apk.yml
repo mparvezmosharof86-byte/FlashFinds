@@ -34,7 +34,7 @@ jobs:
             flutter create --org com.novastudio24 --project-name flashfinds .
           fi
 
-      - name: Inject Real Firebase Keys into Dart
+      - name: Inject Real Firebase Keys & Web Client ID
         run: |
           python3 -c "
           import json
@@ -47,9 +47,19 @@ jobs:
           api_key = client['api_key'][0]['current_key']
           app_id = client['client_info']['mobilesdk_app_id']
 
+          # Extract Web Client ID for Google Login
+          web_client_id = ''
+          for c in data.get('client', []):
+              for oc in c.get('oauth_client', []):
+                  if oc.get('client_type') == 3:
+                      web_client_id = oc.get('client_id', '')
+                      break
+
           code = f'''import \"package:firebase_core/firebase_core.dart\" show FirebaseOptions;
 
           class DefaultFirebaseOptions {{
+            static const String webClientId = \"{web_client_id}\";
+
             static const FirebaseOptions currentPlatform = FirebaseOptions(
               apiKey: \"{api_key}\",
               appId: \"{app_id}\",
@@ -61,17 +71,16 @@ jobs:
           '''
           with open('lib/firebase_options.dart', 'w') as out:
               out.write(code)
-          print('Successfully injected real Firebase credentials into Dart!')
+          print('Successfully injected Firebase credentials and Web Client ID!')
           "
 
-      - name: Setup Permanent Keystore and Extract SHA-1
+      - name: Setup Permanent Keystore
         run: |
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml || true
           
           mkdir -p ~/.android
           mkdir -p android/app
 
-          # Create permanent keystore if not exists
           if [ ! -f "android/app/debug.keystore" ]; then
             keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=FlashFinds,O=NovaStudio24,C=BD"
             git config --global user.name "github-actions[bot]"
@@ -83,11 +92,6 @@ jobs:
 
           cp android/app/debug.keystore ~/.android/debug.keystore
 
-          # Extract Exact SHA-1
-          ACTUAL_SHA1=$(keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android | grep "SHA1:" | head -n 1 | awk '{print $2}')
-          echo "ACTUAL_SHA1=$ACTUAL_SHA1" >> $GITHUB_ENV
-          echo "Your real SHA-1 is: $ACTUAL_SHA1"
-
       - name: Install Flutter Packages
         run: flutter pub get
 
@@ -98,16 +102,12 @@ jobs:
         run: |
           mv build/app/outputs/flutter-apk/app-debug.apk build/app/outputs/flutter-apk/FlashFinds.apk
 
-      - name: Publish Direct APK Release with SHA-1
+      - name: Publish Direct APK Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "FlashFinds v1.0.${{ github.run_number }} - Direct APK"
-          body: |
-            ### 🔑 আপনার Firebase-এ বসানোর আসল SHA-1 কোড:
-            `${{ env.ACTUAL_SHA1 }}`
-            
-            👉 Firebase Console > Project Settings > Add Fingerprint-এ গিয়ে এই কোডটি পেস্ট করুন।
+          body: "FlashFinds APK with Web Client ID injected."
           files: build/app/outputs/flutter-apk/FlashFinds.apk
           draft: false
           prerelease: false
