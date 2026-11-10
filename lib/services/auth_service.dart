@@ -1,41 +1,103 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
-  FirebaseAuth? get _auth {
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  Stream<User?> get userStream => _auth.authStateChanges();
+  User? get currentUser => _auth.currentUser;
+
+  // ১. গুগল সাইন-ইন (ফোনের সব জিমেইল লিস্ট ওপেন করবে)
+  Future<UserCredential?> signInWithGoogle() async {
     try {
-      return FirebaseAuth.instance;
-    } catch (_) {
-      return null;
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      if (googleUser == null) return null; // ইউজার ক্যানসেল করলে
+
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final User? user = userCredential.user;
+
+      if (user != null) {
+        // ফায়ারস্টোর ডাটাবেজে প্রোফাইল তথ্য সিঙ্ক
+        await _firestore.collection('users').doc(user.uid).set({
+          'displayName': user.displayName ?? '',
+          'email': user.email ?? '',
+          'photoUrl': user.photoURL ?? '',
+          'phone': user.phoneNumber ?? '',
+          'authProvider': 'google',
+          'lastLogin': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+      return userCredential;
+    } catch (e) {
+      rethrow;
     }
   }
 
-  Stream<User?> get userStream {
+  // ২. ইমেইল সাইন-আপ (First Name, Last Name সহ)
+  Future<UserCredential?> signUpWithEmail({
+    required String email,
+    required String password,
+    required String firstName,
+    required String lastName,
+  }) async {
     try {
-      return _auth?.authStateChanges() ?? const Stream.empty();
-    } catch (_) {
-      return const Stream.empty();
+      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      final User? user = userCredential.user;
+
+      if (user != null) {
+        final fullName = '$firstName $lastName'.trim();
+        await user.updateDisplayName(fullName);
+        await user.sendEmailVerification(); // ইমেইল ভেরিফিকেশন পাঠানো
+
+        await _firestore.collection('users').doc(user.uid).set({
+          'displayName': fullName,
+          'firstName': firstName,
+          'lastName': lastName,
+          'email': email,
+          'phone': '',
+          'photoUrl': '',
+          'authProvider': 'email',
+          'createdAt': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+      return userCredential;
+    } catch (e) {
+      rethrow;
     }
   }
 
-  User? get currentUser {
-    try {
-      return _auth?.currentUser;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<UserCredential?> signUpWithEmail(String email, String password) async {
-    if (_auth == null) throw 'Authentication service is initializing. Please try again.';
-    return await _auth!.createUserWithEmailAndPassword(email: email, password: password);
-  }
-
+  // ৩. ইমেইল লগইন
   Future<UserCredential?> signInWithEmail(String email, String password) async {
-    if (_auth == null) throw 'Authentication service is initializing. Please try again.';
-    return await _auth!.signInWithEmailAndPassword(email: email, password: password);
+    return await _auth.signInWithEmailAndPassword(email: email, password: password);
   }
 
+  // ৪. ফোন নম্বর সাইন-ইন
+  Future<void> savePhoneUser(String uid, String phoneNumber) async {
+    await _firestore.collection('users').doc(uid).set({
+      'displayName': 'User ${phoneNumber.substring(phoneNumber.length - 4)}',
+      'phone': phoneNumber,
+      'email': '',
+      'photoUrl': '',
+      'authProvider': 'phone',
+      'lastLogin': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  // ৫. লগআউট
   Future<void> signOut() async {
-    await _auth?.signOut();
+    await _googleSignIn.signOut();
+    await _auth.signOut();
   }
 }
