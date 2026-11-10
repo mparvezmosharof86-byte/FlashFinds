@@ -1,15 +1,73 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_colors.dart';
 import '../../models/product_model.dart';
+import '../../services/firestore_service.dart';
 
-class ProductDetailScreen extends StatelessWidget {
+class ProductDetailScreen extends StatefulWidget {
   final ProductModel product;
 
   const ProductDetailScreen({super.key, required this.product});
 
   @override
+  State<ProductDetailScreen> createState() => _ProductDetailScreenState();
+}
+
+class _ProductDetailScreenState extends State<ProductDetailScreen> {
+  final FirestoreService _firestoreService = FirestoreService();
+  bool _isAddingToCart = false;
+
+  String get _currentUserId {
+    return FirebaseAuth.instance.currentUser?.uid ?? 'guest_device';
+  }
+
+  // সরাসরি আলিএক্সপ্রেস অ্যাপ বা ব্রাউজার ওপেন করার ফাংশন (Deep Link)
+  void _openAliExpress() async {
+    // এপিআই থেকে আসল লিংক আসলে সেটি ওপেন হবে, ডেমো হিসেবে আলিএক্সপ্রেসের ডিলস পেজ দেওয়া হলো
+    final String targetUrl = widget.product.affiliateUrl.isNotEmpty
+        ? widget.product.affiliateUrl
+        : 'https://www.aliexpress.com';
+
+    final Uri uri = Uri.parse(targetUrl);
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open AliExpress: $e')),
+        );
+      }
+    }
+  }
+
+  void _handleAddToCart() async {
+    setState(() => _isAddingToCart = true);
+    await _firestoreService.addToCart(_currentUserId, widget.product);
+    setState(() => _isAddingToCart = false);
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('Item added to your Cart!'),
+            ],
+          ),
+          backgroundColor: Colors.green[700],
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final product = widget.product;
+
     return Scaffold(
       backgroundColor: AppColors.scaffoldBackground,
       appBar: AppBar(
@@ -19,19 +77,39 @@ class ProductDetailScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Product Details', style: TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w600)),
+        title: const Text('Deal Details', style: TextStyle(color: AppColors.textDark, fontSize: 16, fontWeight: FontWeight.w600)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.share_outlined, color: AppColors.textDark),
-            onPressed: () {},
-          )
+          // Wishlist / Love Toggle Button
+          StreamBuilder<bool>(
+            stream: _firestoreService.isWishlistedStream(_currentUserId, product.id),
+            builder: (context, snapshot) {
+              final bool isFavorite = snapshot.data ?? false;
+              return IconButton(
+                icon: Icon(
+                  isFavorite ? Icons.favorite : Icons.favorite_border,
+                  color: isFavorite ? Colors.red : AppColors.textDark,
+                ),
+                onPressed: () async {
+                  final added = await _firestoreService.toggleWishlist(_currentUserId, product);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(added ? 'Saved to Wishlist!' : 'Removed from Wishlist'),
+                        duration: const Duration(seconds: 1),
+                      ),
+                    );
+                  }
+                },
+              );
+            },
+          ),
         ],
       ),
       body: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Native Full-Width Image
+            // Product Hero Image
             Container(
               height: 380,
               color: Colors.white,
@@ -39,12 +117,12 @@ class ProductDetailScreen extends StatelessWidget {
                 imageUrl: product.imageUrl,
                 width: double.infinity,
                 fit: BoxFit.contain,
-                placeholder: (context, url) => Container(color: Colors.grey[200]),
+                placeholder: (context, url) => Container(color: Colors.grey[100]),
                 errorWidget: (context, url, error) => const Icon(Icons.broken_image, size: 60, color: Colors.grey),
               ),
             ),
-            
-            // Price & Title Card
+
+            // Price & Title Information
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -97,18 +175,18 @@ class ProductDetailScreen extends StatelessWidget {
                       const SizedBox(width: 4),
                       Text('${product.rating}', style: const TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(width: 12),
-                      Text('${product.totalSales}+ Sold', style: const TextStyle(color: AppColors.textMuted)),
+                      Text('${product.totalSales}+ Verified Orders', style: const TextStyle(color: AppColors.textMuted)),
                       const Spacer(),
                       const Icon(Icons.verified, color: Colors.blue, size: 16),
                       const SizedBox(width: 4),
-                      const Text('Top Rated', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w500, fontSize: 12)),
+                      const Text('Verified Deal', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w500, fontSize: 12)),
                     ],
                   ),
                 ],
               ),
             ),
 
-            // Description Box
+            // Description Card
             Container(
               width: double.infinity,
               margin: const EdgeInsets.only(top: 8),
@@ -117,18 +195,18 @@ class ProductDetailScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Specifications & Overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const Text('Product Overview & Guarantee', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 8),
                   Text(
-                    product.description.isEmpty 
-                      ? 'Guaranteed authentic deal verified with top buyer reviews and fast logistics.' 
-                      : product.description,
+                    product.description.isEmpty
+                        ? 'Guaranteed authentic deal sourced directly from verified top AliExpress merchants with international buyer protection.'
+                        : product.description,
                     style: const TextStyle(color: AppColors.textMuted, height: 1.5, fontSize: 14),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 90), // Bottom button gap
+            const SizedBox(height: 100),
           ],
         ),
       ),
@@ -141,17 +219,39 @@ class ProductDetailScreen extends StatelessWidget {
         child: SafeArea(
           child: Row(
             children: [
+              // Add to Cart Button
               Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    // এটি পরবর্তীতে অ্যাফিলিয়েট লিংকে সরাসরি আলিএক্সপ্রেস অ্যাপ ওপেন করবে
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                flex: 1,
+                child: SizedBox(
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: _isAddingToCart ? null : _handleAddToCart,
+                    icon: _isAddingToCart
+                        ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.add_shopping_cart, color: AppColors.primary),
+                    label: const Text('Add to Cart', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: AppColors.primary),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
                   ),
-                  child: const Text('Buy on AliExpress', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                ),
+              ),
+              const SizedBox(width: 12),
+
+              // Direct AliExpress App Launcher Button (Deep Link)
+              Expanded(
+                flex: 1,
+                child: SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _openAliExpress,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: const Text('Buy on AliExpress', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                  ),
                 ),
               ),
             ],
