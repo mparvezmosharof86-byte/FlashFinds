@@ -71,26 +71,21 @@ jobs:
           '''
           with open('lib/firebase_options.dart', 'w') as out:
               out.write(code)
-          print('Successfully injected Firebase credentials and Web Client ID!')
+          print('Successfully injected Firebase credentials!')
           "
 
-      - name: Setup Permanent Keystore
+      - name: Strictly Lock Permanent Keystore & Read Real SHA-1
         run: |
           sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml || true
           
           mkdir -p ~/.android
-          mkdir -p android/app
-
-          if [ ! -f "android/app/debug.keystore" ]; then
-            keytool -genkey -v -keystore android/app/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=FlashFinds,O=NovaStudio24,C=BD"
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add -f android/app/debug.keystore || true
-            git commit -m "Add permanent debug keystore [skip ci]" || true
-            git push origin main || true
-          fi
-
+          # গিটহাবের সেই স্থায়ী ফাইলটি সরাসরি অ্যান্ড্রয়েডের সাইনিং ফোল্ডারে কপি করা হলো
           cp android/app/debug.keystore ~/.android/debug.keystore
+
+          # এই আসল স্থায়ী ফাইলের আসল SHA-1 বের করা হলো
+          PERMANENT_SHA1=$(keytool -list -v -keystore android/app/debug.keystore -alias androiddebugkey -storepass android | grep "SHA1:" | head -n 1 | awk '{print $2}')
+          echo "PERMANENT_SHA1=$PERMANENT_SHA1" >> $GITHUB_ENV
+          echo "### 🔑 THIS IS YOUR PERMANENT SHA-1: $PERMANENT_SHA1" >> $GITHUB_STEP_SUMMARY
 
       - name: Install Flutter Packages
         run: flutter pub get
@@ -106,8 +101,12 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: "FlashFinds v1.0.${{ github.run_number }} - Direct APK"
-          body: "FlashFinds APK with Web Client ID injected."
+          name: "FlashFinds v1.0.${{ github.run_number }} - Locked Keystore"
+          body: |
+            ### 🔑 আপনার এই পার্মানেন্ট চাবির আসল SHA-1 কোড:
+            `${{ env.PERMANENT_SHA1 }}`
+            
+            👉 এই কোডটি কপি করে Firebase Console > Project Settings > Add Fingerprint-এ বসিয়ে দিন।
           files: build/app/outputs/flutter-apk/FlashFinds.apk
           draft: false
           prerelease: false
