@@ -13,7 +13,20 @@
           "package_name": "com.novastudio24.flashfinds"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "863391242292-sq6l3h70sdad13u8cri0udt09gv03ame.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.novastudio24.flashfinds",
+            "certificate_hash": "0297b026e36f9f77dbc18f1f57d646e550164f6e"
+          }
+        },
+        {
+          "client_id": "863391242292-1n7g5965tt2739m82ja6rqo1ucb4ie4o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDYwIxatQO_c0myq-32bgrhvnFiuo4bM8k"
@@ -21,7 +34,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "863391242292-1n7g5965tt2739m82ja6rqo1ucb4ie4o.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
