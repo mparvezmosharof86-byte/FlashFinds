@@ -34,6 +34,10 @@ jobs:
             flutter create --org com.novastudio24 --project-name flashfinds .
           fi
 
+      - name: Fix Android Internet Permissions & Manifest
+        run: |
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>' android/app/src/main/AndroidManifest.xml
+
       - name: Install Flutter Packages
         run: flutter pub get
 
@@ -49,7 +53,7 @@ jobs:
         with:
           tag_name: v1.0.${{ github.run_number }}
           name: "FlashFinds v1.0.${{ github.run_number }} - Direct APK"
-          body: "FlashFinds-এর টেস্ট রিলিজ এপিকে। নিচে ক্লিক করে সরাসরি APK ডাউনলোড করুন।"
+          body: "FlashFinds-এর সম্পূর্ণ ফিক্সড রিলিজ এপিকে।"
           files: build/app/outputs/flutter-apk/FlashFinds.apk
           draft: false
           prerelease: false
