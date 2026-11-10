@@ -4,12 +4,39 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../constants/app_colors.dart';
 import '../../models/product_model.dart';
+import '../../services/aliexpress_service.dart';
 import '../search/search_screen.dart';
 import '../product/product_detail_screen.dart';
 import '../auth/login_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  final AliExpressService _apiService = AliExpressService();
+  List<ProductModel> _deals = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDeals();
+  }
+
+  Future<void> _fetchDeals() async {
+    setState(() => _isLoading = true);
+    final results = await _apiService.fetchTopDeals();
+    if (mounted) {
+      setState(() {
+        _deals = results;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,7 +49,6 @@ class HomeScreen extends StatelessWidget {
           flexibleSpace: Container(decoration: const BoxDecoration(gradient: AppColors.fireGradient)),
           title: Row(
             children: [
-              // Search Bar
               Expanded(
                 child: GestureDetector(
                   onTap: () {
@@ -53,8 +79,6 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-
-              // Direct Top Login Button (এখন হোম পেজেই লগইন অপশন থাকবে)
               InkWell(
                 onTap: () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
@@ -71,10 +95,7 @@ class HomeScreen extends StatelessWidget {
                     children: [
                       Icon(Icons.person, color: Colors.white, size: 18),
                       SizedBox(width: 4),
-                      Text(
-                        'Login',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                      ),
+                      Text('Account', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -83,61 +104,69 @@ class HomeScreen extends StatelessWidget {
           ),
         ),
       ),
-      body: CustomScrollView(
-        slivers: [
-          // Flash Banner
-          SliverToBoxAdapter(
-            child: Container(
-              margin: const EdgeInsets.all(12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: AppColors.fireGradient,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.bolt, color: Colors.yellow, size: 32),
-                  SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('SUPER FLASH FINDS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text('Up to 80% OFF Verified Top Deals', style: TextStyle(color: Colors.white70, fontSize: 12)),
-                    ],
-                  ),
-                ],
+      body: RefreshIndicator(
+        onRefresh: _fetchDeals,
+        color: AppColors.primary,
+        child: CustomScrollView(
+          slivers: [
+            // Flash Banner
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: AppColors.fireGradient,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: AppColors.primary.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 3))],
+                ),
+                child: const Row(
+                  children: [
+                    Icon(Icons.bolt, color: Colors.yellow, size: 36),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('SUPER FLASH FINDS', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                          SizedBox(height: 2),
+                          Text('Up to 80% OFF Verified Top Rated Deals', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // 2-Column Infinite Masonry Product Grid (100% Native)
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            sliver: SliverMasonryGrid.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              itemBuilder: (context, index) {
-                final mockProduct = ProductModel(
-                  id: '$index',
-                  title: 'Ultra Fast Wireless Charging Smart Gadget 2026 Edition',
-                  imageUrl: 'https://picsum.photos/400/400?random=$index',
-                  currentPrice: 4.99 + (index * 1.5),
-                  originalPrice: 15.99 + (index * 2),
-                  discountPercentage: 65,
-                  rating: 4.8,
-                  totalSales: 2400,
-                  category: 'Electronics',
-                  description: 'Top grade certified materials with high performance battery.',
-                  affiliateUrl: '',
-                );
-
-                return _buildProductCard(context, mockProduct);
-              },
-              childCount: 10,
-            ),
-          ),
-        ],
+            // Deals Grid
+            if (_isLoading)
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                sliver: SliverMasonryGrid.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  itemBuilder: (_, __) => _buildShimmerCard(),
+                  childCount: 4,
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                sliver: SliverMasonryGrid.count(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  itemBuilder: (context, index) {
+                    final product = _deals[index];
+                    return _buildProductCard(context, product);
+                  },
+                  childCount: _deals.length,
+                ),
+              ),
+            const SliverToBoxAdapter(child: SizedBox(height: 30)),
+          ],
+        ),
       ),
     );
   }
@@ -154,9 +183,7 @@ class HomeScreen extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.cardSurface,
           borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2)),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 6, offset: const Offset(0, 2))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -168,11 +195,7 @@ class HomeScreen extends StatelessWidget {
                 height: 170,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                placeholder: (context, url) => Shimmer.fromColors(
-                  baseColor: Colors.grey[300]!,
-                  highlightColor: Colors.grey[100]!,
-                  child: Container(height: 170, color: Colors.white),
-                ),
+                placeholder: (context, url) => Container(color: Colors.grey[200]),
                 errorWidget: (context, url, error) => Container(height: 170, color: Colors.grey[200], child: const Icon(Icons.image)),
               ),
             ),
@@ -213,6 +236,17 @@ class HomeScreen extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildShimmerCard() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: Container(
+        height: 220,
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
