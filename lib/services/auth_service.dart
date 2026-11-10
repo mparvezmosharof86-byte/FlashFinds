@@ -1,20 +1,49 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  // Safe Lazy Initializers (কখনোই ক্র্যাশ করবে না)
+  FirebaseAuth? get _auth {
+    try {
+      return FirebaseAuth.instance;
+    } catch (e) {
+      debugPrint("Auth init safe skip: $e");
+      return null;
+    }
+  }
 
-  Stream<User?> get userStream => _auth.authStateChanges();
-  User? get currentUser => _auth.currentUser;
+  FirebaseFirestore? get _firestore {
+    try {
+      return FirebaseFirestore.instance;
+    } catch (e) {
+      debugPrint("Firestore init safe skip: $e");
+      return null;
+    }
+  }
 
-  // ১. গুগল সাইন-ইন (ফোনের সব জিমেইল লিস্ট ওপেন করবে)
+  Stream<User?> get userStream {
+    try {
+      return _auth?.authStateChanges() ?? const Stream.empty();
+    } catch (_) {
+      return const Stream.empty();
+    }
+  }
+
+  User? get currentUser {
+    try {
+      return _auth?.currentUser;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      if (googleUser == null) return null; // ইউজার ক্যানসেল করলে
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) return null;
 
       final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
       final AuthCredential credential = GoogleAuthProvider.credential(
@@ -22,16 +51,15 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      if (_auth == null) throw 'Firebase not ready yet';
+      final UserCredential userCredential = await _auth!.signInWithCredential(credential);
       final User? user = userCredential.user;
 
-      if (user != null) {
-        // ফায়ারস্টোর ডাটাবেজে প্রোফাইল তথ্য সিঙ্ক
-        await _firestore.collection('users').doc(user.uid).set({
+      if (user != null && _firestore != null) {
+        await _firestore!.collection('users').doc(user.uid).set({
           'displayName': user.displayName ?? '',
           'email': user.email ?? '',
           'photoUrl': user.photoURL ?? '',
-          'phone': user.phoneNumber ?? '',
           'authProvider': 'google',
           'lastLogin': FieldValue.serverTimestamp(),
         }, SetOptions(merge: true));
@@ -42,62 +70,35 @@ class AuthService {
     }
   }
 
-  // ২. ইমেইল সাইন-আপ (First Name, Last Name সহ)
   Future<UserCredential?> signUpWithEmail({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
   }) async {
-    try {
-      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-      final User? user = userCredential.user;
-
-      if (user != null) {
-        final fullName = '$firstName $lastName'.trim();
-        await user.updateDisplayName(fullName);
-        await user.sendEmailVerification(); // ইমেইল ভেরিফিকেশন পাঠানো
-
-        await _firestore.collection('users').doc(user.uid).set({
-          'displayName': fullName,
-          'firstName': firstName,
-          'lastName': lastName,
-          'email': email,
-          'phone': '',
-          'photoUrl': '',
-          'authProvider': 'email',
-          'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-      return userCredential;
-    } catch (e) {
-      rethrow;
+    if (_auth == null) throw 'Authentication service is initializing';
+    final cred = await _auth!.createUserWithEmailAndPassword(email: email, password: password);
+    final user = cred.user;
+    if (user != null && _firestore != null) {
+      await user.updateDisplayName('$firstName $lastName'.trim());
+      await _firestore!.collection('users').doc(user.uid).set({
+        'displayName': '$firstName $lastName'.trim(),
+        'email': email,
+        'createdAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
     }
+    return cred;
   }
 
-  // ৩. ইমেইল লগইন
   Future<UserCredential?> signInWithEmail(String email, String password) async {
-    return await _auth.signInWithEmailAndPassword(email: email, password: password);
+    if (_auth == null) throw 'Authentication service is initializing';
+    return await _auth!.signInWithEmailAndPassword(email: email, password: password);
   }
 
-  // ৪. ফোন নম্বর সাইন-ইন
-  Future<void> savePhoneUser(String uid, String phoneNumber) async {
-    await _firestore.collection('users').doc(uid).set({
-      'displayName': 'User ${phoneNumber.substring(phoneNumber.length - 4)}',
-      'phone': phoneNumber,
-      'email': '',
-      'photoUrl': '',
-      'authProvider': 'phone',
-      'lastLogin': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
-  }
-
-  // ৫. লগআউট
   Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    await _auth.signOut();
+    try {
+      await GoogleSignIn().signOut();
+      await _auth?.signOut();
+    } catch (_) {}
   }
 }
