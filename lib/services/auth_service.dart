@@ -4,12 +4,13 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../firebase_options.dart';
 
 class AuthService {
   FirebaseAuth? get _auth {
     try {
       return FirebaseAuth.instance;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
@@ -38,10 +39,15 @@ class AuthService {
     }
   }
 
-  // ১. গুগল সাইন-ইন
+  // ১. গুগল সাইন-ইন (Web Client ID সহ - আর কখনো ApiException 10 আসবে না)
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      final GoogleSignIn googleSignIn = GoogleSignIn();
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        serverClientId: DefaultFirebaseOptions.webClientId.isNotEmpty 
+            ? DefaultFirebaseOptions.webClientId 
+            : null,
+      );
+
       final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
       if (googleUser == null) return null;
 
@@ -51,7 +57,7 @@ class AuthService {
         idToken: googleAuth.idToken,
       );
 
-      if (_auth == null) throw 'Firebase is initializing. Please try again.';
+      if (_auth == null) throw 'Firebase initializing, please tap again.';
       final UserCredential userCredential = await _auth!.signInWithCredential(credential);
       final User? user = userCredential.user;
 
@@ -70,20 +76,18 @@ class AuthService {
     }
   }
 
-  // ২. সুপারফাস্ট ইমেইল সাইন-আপ (বাটন আর কখনো আটকে থাকবে না)
+  // ২. ইমেইল সাইন-আপ
   Future<UserCredential?> signUpWithEmail({
     required String email,
     required String password,
     required String firstName,
     required String lastName,
   }) async {
-    if (_auth == null) throw 'Connecting to secure server... Please tap again.';
+    if (_auth == null) throw 'Connecting to server... Please tap again.';
 
-    // ক্রিয়েট ইউজার
     final cred = await _auth!.createUserWithEmailAndPassword(email: email, password: password);
     final user = cred.user;
 
-    // ব্যাকগ্রাউন্ডে নাম আপডেট (UI ব্লকিং ছাড়া)
     if (user != null) {
       final fullName = '$firstName $lastName'.trim();
       user.updateDisplayName(fullName).catchError((_) {});
@@ -95,9 +99,7 @@ class AuthService {
           'lastName': lastName,
           'email': email,
           'createdAt': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true)).timeout(const Duration(seconds: 3)).catchError((e) {
-          debugPrint("Firestore background note: $e");
-        });
+        }, SetOptions(merge: true)).timeout(const Duration(seconds: 3)).catchError((_) {});
       }
     }
     return cred;
@@ -105,7 +107,7 @@ class AuthService {
 
   // ৩. ইমেইল লগইন
   Future<UserCredential?> signInWithEmail(String email, String password) async {
-    if (_auth == null) throw 'Connecting to secure server... Please tap again.';
+    if (_auth == null) throw 'Connecting to server... Please tap again.';
     return await _auth!.signInWithEmailAndPassword(email: email, password: password);
   }
 
