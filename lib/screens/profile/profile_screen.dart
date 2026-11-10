@@ -36,6 +36,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  void _handleSignOut() async {
+    await _authService.signOut();
+    if (mounted) {
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Logged out successfully')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     User? user;
@@ -118,7 +128,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           height: 20,
                         ),
                         label: _isLoading
-                            ? const CircularProgressIndicator()
+                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
                             : const Text('Continue with Google', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w600)),
                         style: OutlinedButton.styleFrom(
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -155,4 +165,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _buildOption(Icons.verified_user_outlined, 'Privacy Policy & Terms', () {}),
             _buildOption(Icons.info_outline, 'About FlashFinds App', () {}),
 
-            if (is
+            // If Logged in: Show Sign Out Option
+            if (isLoggedIn) ...[
+              const SizedBox(height: 16),
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _handleSignOut,
+                  icon: const Icon(Icons.logout, color: Colors.red),
+                  label: const Text('Sign Out Account', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 30),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOption(IconData icon, String title, VoidCallback onTap) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+      child: ListTile(
+        leading: Icon(icon, color: AppColors.primary),
+        title: Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+        trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.textMuted),
+        onTap: onTap,
+      ),
+    );
+  }
+}
