@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
+import 'category_products_screen.dart';
 
 class CategoryScreen extends StatefulWidget {
   const CategoryScreen({super.key});
@@ -56,7 +57,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
       ),
       body: Row(
         children: [
-          // Left Rail Navigation
+          // Left Rail
           Container(
             width: 105,
             color: const Color(0xFFF6F7F9),
@@ -120,7 +121,10 @@ class _CategoryScreenState extends State<CategoryScreen> {
                         final subName = (_categories[_selectedCategoryIndex]['subs'] as List)[i];
                         return InkWell(
                           onTap: () {
-                            // সাব-ক্যাটাগরিতে ক্লিক করলে সরাসরি প্রোডাক্ট ফিল্টার হয়ে আসবে
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => CategoryProductsScreen(categoryTitle: subName)),
+                            );
                           },
                           child: Container(
                             decoration: BoxDecoration(
