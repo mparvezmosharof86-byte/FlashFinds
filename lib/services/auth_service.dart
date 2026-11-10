@@ -39,6 +39,7 @@ class AuthService {
     }
   }
 
+  // ১. গুগল সাইন-ইন
   Future<UserCredential?> signInWithGoogle() async {
     try {
       final GoogleSignIn googleSignIn = GoogleSignIn();
@@ -70,6 +71,7 @@ class AuthService {
     }
   }
 
+  // ২. ইমেইল সাইন-আপ
   Future<UserCredential?> signUpWithEmail({
     required String email,
     required String password,
@@ -90,11 +92,30 @@ class AuthService {
     return cred;
   }
 
+  // ৩. ইমেইল লগইন
   Future<UserCredential?> signInWithEmail(String email, String password) async {
     if (_auth == null) throw 'Authentication service is initializing';
     return await _auth!.signInWithEmailAndPassword(email: email, password: password);
   }
 
+  // ৪. ফোন নম্বর ইউজার সেভ করা (যা বাদ পড়েছিল)
+  Future<void> savePhoneUser(String uid, String phoneNumber) async {
+    if (_firestore == null) return;
+    try {
+      await _firestore!.collection('users').doc(uid).set({
+        'displayName': 'User ${phoneNumber.length >= 4 ? phoneNumber.substring(phoneNumber.length - 4) : phoneNumber}',
+        'phone': phoneNumber,
+        'email': '',
+        'photoUrl': '',
+        'authProvider': 'phone',
+        'lastLogin': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint("Save phone user note: $e");
+    }
+  }
+
+  // ৫. লগআউট
   Future<void> signOut() async {
     try {
       await GoogleSignIn().signOut();
