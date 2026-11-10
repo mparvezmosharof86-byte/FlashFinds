@@ -22,13 +22,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (cred != null && mounted) {
         setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Logged in successfully with Google!'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Logged in successfully!'), backgroundColor: Colors.green),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Google Sign-In: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Notice: $e'), backgroundColor: Colors.orange[800]),
         );
       }
     } finally {
@@ -48,10 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    User? user;
-    try {
-      user = FirebaseAuth.instance.currentUser;
-    } catch (_) {}
+    User? user = _authService.currentUser;
     final bool isLoggedIn = user != null;
 
     return Scaffold(
@@ -64,14 +61,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // User Card
+            // User Header Card
             Container(
               padding: const EdgeInsets.all(20),
               color: Colors.white,
               child: Row(
                 children: [
                   CircleAvatar(
-                    radius: 34,
+                    radius: 32,
                     backgroundColor: AppColors.primary.withOpacity(0.1),
                     backgroundImage: (isLoggedIn && user?.photoURL != null) ? NetworkImage(user!.photoURL!) : null,
                     child: (!isLoggedIn || user?.photoURL == null)
@@ -121,19 +118,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     SizedBox(
                       width: double.infinity,
                       height: 46,
-                      child: OutlinedButton.icon(
+                      child: OutlinedButton(
                         onPressed: _isLoading ? null : _handleGoogleLogin,
-                        icon: Image.network(
-                          'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/768px-Google_%22G%22_logo.svg.png',
-                          height: 20,
-                        ),
-                        label: _isLoading
-                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Text('Continue with Google', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w600)),
                         style: OutlinedButton.styleFrom(
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           side: BorderSide(color: Colors.grey[300]!),
                         ),
+                        child: _isLoading
+                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Text('Continue with Google', style: TextStyle(color: AppColors.textDark, fontWeight: FontWeight.w600)),
                       ),
                     ),
                     const SizedBox(height: 10),
